@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -6,26 +7,31 @@ using System.Media;
 using System.Text;
 using System.Windows.Forms;
 
+using pk3DS.Core;
+using pk3DS.Core.Randomizers;
+using pk3DS.Core.Structures;
+
 namespace pk3DS
 {
     public partial class SMTE : Form
     {
+        private readonly LearnsetRandomizer learn = new LearnsetRandomizer(Main.Config, Main.Config.Learnsets);
         private readonly trdata7[] Trainers;
         private string[][] AltForms;
         private int index = -1;
         private PictureBox[] pba;
 
         private readonly byte[][] trclass, trdata, trpoke;
-        private readonly string[] abilitylist = Main.getText(TextName.AbilityNames);
-        private readonly string[] movelist = Main.getText(TextName.MoveNames);
-        private readonly string[] itemlist = Main.getText(TextName.ItemNames);
-        private readonly string[] specieslist = Main.getText(TextName.SpeciesNames);
-        private readonly string[] types = Main.getText(TextName.Types);
-        private readonly string[] natures = Main.getText(TextName.Natures);
+        private readonly string[] abilitylist = Main.Config.getText(TextName.AbilityNames);
+        private readonly string[] movelist = Main.Config.getText(TextName.MoveNames);
+        private readonly string[] itemlist = Main.Config.getText(TextName.ItemNames);
+        private readonly string[] specieslist = Main.Config.getText(TextName.SpeciesNames);
+        private readonly string[] types = Main.Config.getText(TextName.Types);
+        private readonly string[] natures = Main.Config.getText(TextName.Natures);
         private readonly string[] forms = Enumerable.Range(0, 1000).Select(i => i.ToString("000")).ToArray();
-        private string[] trName = Main.getText(TextName.TrainerNames);
-        private readonly string[] trClass = Main.getText(TextName.TrainerClasses);
-        private readonly string[] trText = Main.getText(TextName.TrainerText);
+        private string[] trName = Main.Config.getText(TextName.TrainerNames);
+        private readonly string[] trClass = Main.Config.getText(TextName.TrainerClasses);
+        private readonly string[] trText = Main.Config.getText(TextName.TrainerText);
 
         public SMTE(byte[][] trc, byte[][] trd, byte[][] trp)
         {
@@ -82,7 +88,7 @@ namespace pk3DS
         {
             int slot = getSlot(sender);
             if (CB_Species.SelectedIndex == 0)
-            { Util.Alert("Can't set empty slot."); return; }
+            { WinFormsUtil.Alert("Can't set empty slot."); return; }
 
             var pk = prepareTP7();
             var tr = Trainers[index];
@@ -92,7 +98,7 @@ namespace pk3DS
             {
                 tr.Pokemon.Add(pk);
                 slot = tr.Pokemon.Count - 1;
-                Trainers[index].NumPokemon = (int)(++NUD_NumPoke.Value);
+                Trainers[index].NumPokemon = (int)++NUD_NumPoke.Value;
             }
 
             getQuickFiller(pba[slot], pk);
@@ -105,7 +111,7 @@ namespace pk3DS
             if (slot < Trainers[index].NumPokemon)
             {
                 Trainers[index].Pokemon.RemoveAt(slot);
-                Trainers[index].NumPokemon = (int)(--NUD_NumPoke.Value);
+                Trainers[index].NumPokemon = (int)--NUD_NumPoke.Value;
             }
 
             populateTeam(Trainers[index]);
@@ -129,8 +135,8 @@ namespace pk3DS
         }
         private static void getQuickFiller(PictureBox pb, trpoke7 pk)
         {
-            Bitmap rawImg = Util.getSprite(pk.Species, pk.Form, pk.Gender, pk.Item, pk.Shiny);
-            pb.Image = Util.scaleImage(rawImg, 2);
+            Bitmap rawImg = WinFormsUtil.getSprite(pk.Species, pk.Form, pk.Gender, pk.Item, Main.Config, pk.Shiny);
+            pb.Image = WinFormsUtil.scaleImage(rawImg, 2);
         }
 
         // Top Level Functions
@@ -344,19 +350,19 @@ namespace pk3DS
             pk.Move3 = CB_Move3.SelectedIndex;
             pk.Move4 = CB_Move4.SelectedIndex;
 
-            pk.IV_HP = Util.ToInt32(TB_HPIV);
-            pk.IV_ATK = Util.ToInt32(TB_ATKIV);
-            pk.IV_DEF = Util.ToInt32(TB_DEFIV);
-            pk.IV_SPA = Util.ToInt32(TB_SPAIV);
-            pk.IV_SPE = Util.ToInt32(TB_SPEIV);
-            pk.IV_SPD = Util.ToInt32(TB_SPDIV);
+            pk.IV_HP = WinFormsUtil.ToInt32(TB_HPIV);
+            pk.IV_ATK = WinFormsUtil.ToInt32(TB_ATKIV);
+            pk.IV_DEF = WinFormsUtil.ToInt32(TB_DEFIV);
+            pk.IV_SPA = WinFormsUtil.ToInt32(TB_SPAIV);
+            pk.IV_SPE = WinFormsUtil.ToInt32(TB_SPEIV);
+            pk.IV_SPD = WinFormsUtil.ToInt32(TB_SPDIV);
 
-            pk.EV_HP = Util.ToInt32(TB_HPEV);
-            pk.EV_ATK = Util.ToInt32(TB_ATKEV);
-            pk.EV_DEF = Util.ToInt32(TB_DEFEV);
-            pk.EV_SPA = Util.ToInt32(TB_SPAEV);
-            pk.EV_SPE = Util.ToInt32(TB_SPEEV);
-            pk.EV_SPD = Util.ToInt32(TB_SPDEV);
+            pk.EV_HP = WinFormsUtil.ToInt32(TB_HPEV);
+            pk.EV_ATK = WinFormsUtil.ToInt32(TB_ATKEV);
+            pk.EV_DEF = WinFormsUtil.ToInt32(TB_DEFEV);
+            pk.EV_SPA = WinFormsUtil.ToInt32(TB_SPAEV);
+            pk.EV_SPE = WinFormsUtil.ToInt32(TB_SPEEV);
+            pk.EV_SPD = WinFormsUtil.ToInt32(TB_SPDEV);
 
             return pk;
         }
@@ -385,22 +391,6 @@ namespace pk3DS
             tr.Money = CB_Money.SelectedIndex;
             tr.AI = (int)NUD_AI.Value;
             tr.Flag = CHK_Flag.Checked;
-        }
-        private static int[] getHighAttacks(trpoke7 pk)
-        {
-            int i = Main.Config.Personal.getFormeIndex(pk.Species, pk.Form);
-            var learnset = Main.Config.Learnsets[i];
-            var moves = learnset.Moves.OrderByDescending(move => Main.Config.Moves[move].Power).Distinct().Take(4).ToArray();
-            Array.Resize(ref moves, 4);
-            return moves;
-        }
-        private static int[] getCurrentAttacks(trpoke7 pk)
-        {
-            int i = Main.Config.Personal.getFormeIndex(pk.Species, pk.Form);
-            var learnset = Main.Config.Learnsets[i];
-            var moves = learnset.getCurrentMoves(pk.Level);
-            Array.Resize(ref moves, 4);
-            return moves;
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -454,7 +444,7 @@ namespace pk3DS
         {
             if (index < 0)
                 return;
-            Trainers[index].NumPokemon = (int) (NUD_NumPoke.Value);
+            Trainers[index].NumPokemon = (int) NUD_NumPoke.Value;
         }
         private void updateTrainerName(object sender, EventArgs e)
         {
@@ -474,9 +464,9 @@ namespace pk3DS
             for (int i = 0; i < 6; i++)
             {
                 updatingStats = true;
-                if (Util.ToInt32(tb_iv[i]) > 31)
+                if (WinFormsUtil.ToInt32(tb_iv[i]) > 31)
                     tb_iv[i].Text = "31";
-                if (Util.ToInt32(tb_ev[i]) > 255)
+                if (WinFormsUtil.ToInt32(tb_ev[i]) > 255)
                     tb_ev[i].Text = "255";
                 updatingStats = false;
             }
@@ -513,8 +503,8 @@ namespace pk3DS
             Stat_SPD.Text = Stats[5].ToString();
             Stat_SPE.Text = Stats[3].ToString();
 
-            TB_IVTotal.Text = tb_iv.Select(Util.ToInt32).Sum().ToString();
-            TB_EVTotal.Text = tb_ev.Select(Util.ToInt32).Sum().ToString();
+            TB_IVTotal.Text = tb_iv.Select(WinFormsUtil.ToInt32).Sum().ToString();
+            TB_EVTotal.Text = tb_ev.Select(WinFormsUtil.ToInt32).Sum().ToString();
 
             // Recolor the Stat Labels based on boosted stats.
             {
@@ -532,9 +522,9 @@ namespace pk3DS
                     labarray[decr].ForeColor = Color.Blue;
                 }
             }
-            var ivs = tb_iv.Select(tb => Util.ToInt32(tb) & 1).ToArray();
+            var ivs = tb_iv.Select(tb => WinFormsUtil.ToInt32(tb) & 1).ToArray();
             updatingStats = true;
-            CB_HPType.SelectedIndex = 15 * ((ivs[0]) + 2 * ivs[1] + 4 * ivs[2] + 8 * ivs[3] + 16 * ivs[4] + 32 * ivs[5]) / 63;
+            CB_HPType.SelectedIndex = 15 * (ivs[0] + 2 * ivs[1] + 4 * ivs[2] + 8 * ivs[3] + 16 * ivs[4] + 32 * ivs[5]) / 63;
             updatingStats = false;
         }
 
@@ -543,7 +533,7 @@ namespace pk3DS
             if (updatingStats)
                 return;
             var tb_iv = new[] { TB_HPIV, TB_ATKIV, TB_DEFIV, TB_SPAIV, TB_SPDIV, TB_SPEIV };
-            int[] newIVs = setHPIVs(CB_HPType.SelectedIndex, tb_iv.Select(Util.ToInt32).ToArray());
+            int[] newIVs = setHPIVs(CB_HPType.SelectedIndex, tb_iv.Select(WinFormsUtil.ToInt32).ToArray());
             updatingStats = true;
             TB_HPIV.Text = newIVs[0].ToString();
             TB_ATKIV.Text = newIVs[1].ToString();
@@ -581,12 +571,35 @@ namespace pk3DS
 
         private void B_Randomize_Click(object sender, EventArgs e)
         {
+            if (WinFormsUtil.Prompt(MessageBoxButtons.YesNo, "Randomize all? Cannot undo.", "Double check Randomization settings in the Misc/Rand tab.") != DialogResult.Yes) return;
+
             CB_TrainerID.SelectedIndex = 0;
-            Randomizer rnd = new Randomizer(CHK_G1.Checked, CHK_G2.Checked, CHK_G3.Checked, CHK_G4.Checked, CHK_G5.Checked, 
-                CHK_G6.Checked, CHK_G7.Checked, CHK_L.Checked, CHK_E.Checked, Shedinja: true)
+            var rnd = new SpeciesRandomizer(Main.Config)
             {
-                BST = CHK_BST.Checked,
-                Stats = Main.SpeciesStat
+                G1 = CHK_G1.Checked,
+                G2 = CHK_G2.Checked,
+                G3 = CHK_G3.Checked,
+                G4 = CHK_G4.Checked,
+                G5 = CHK_G5.Checked,
+                G6 = CHK_G6.Checked,
+                G7 = CHK_G7.Checked,
+
+                E = CHK_E.Checked,
+                L = CHK_L.Checked,
+                rBST = CHK_BST.Checked,
+            };
+            rnd.Initialize();
+
+            var banned = new List<int>(new[] { 165, 621, 464 }.Concat(Legal.Z_Moves)); // Struggle, Hyperspace Fury, Dark Void
+            if (CHK_NoFixedDamage.Checked)
+                banned.AddRange(MoveRandomizer.FixedDamageMoves);
+            var move = new MoveRandomizer(Main.Config)
+            {
+                BannedMoves = banned,
+                rSTABCount = (int) NUD_STAB.Value,
+                rDMG = CHK_Damage.Checked,
+                rDMGCount = (int) NUD_Damage.Value,
+                rSTAB = CHK_STAB.Checked
             };
 
             var items = Randomizer.getRandomItemList();
@@ -602,7 +615,7 @@ namespace pk3DS
                     do
                     {
                         rv = (int) (Util.rnd32()%CB_Trainer_Class.Items.Count);
-                    } while (/*trClass[rv].StartsWith("[~") || */(Legal.SpecialClasses_SM.Contains(rv) && !CHK_IgnoreSpecialClass.Checked));
+                    } while (/*trClass[rv].StartsWith("[~") || */Legal.SpecialClasses_SM.Contains(rv) && !CHK_IgnoreSpecialClass.Checked);
                     // don't allow disallowed classes
                     tr.TrainerClass = (byte) rv;
                 }
@@ -616,7 +629,7 @@ namespace pk3DS
                     for (int p = tr.NumPokemon; p < NUD_RMin.Value; p++)
                         tr.Pokemon.Add(new trpoke7
                         {
-                            Species = rnd.getRandomSpecies(avgSpec),
+                            Species = rnd.GetRandomSpecies(avgSpec),
                             Level = avgLevel,
                         });
                     tr.NumPokemon = (int)NUD_RMin.Value;
@@ -633,12 +646,12 @@ namespace pk3DS
                     if (CHK_RandomPKM.Checked)
                     {
                         int Type = CHK_TypeTheme.Checked ? (int)Util.rnd32()%17 : -1;
-                        pk.Species = rnd.getRandomSpecies(pk.Species, Type);
+                        pk.Species = rnd.GetRandomSpeciesType(pk.Species, Type);
                         pk.Form = Randomizer.GetRandomForme(pk.Species, CHK_RandomMegaForm.Checked, true, Main.SpeciesStat);
                         pk.Gender = 0; // Random Gender
                     }
                     if (CHK_Level.Checked)
-                        pk.Level = (int)(pk.Level*(100 + NUD_LevelBoost.Value))/100;
+                        pk.Level = Randomizer.getModifiedLevel(pk.Level, NUD_LevelBoost.Value);
                     if (CHK_RandomShiny.Checked)
                         pk.Shiny = Util.rand.Next(0, 100 + 1) < NUD_Shiny.Value;
                     if (CHK_RandomItems.Checked)
@@ -651,30 +664,33 @@ namespace pk3DS
                     switch (CB_Moves.SelectedIndex)
                     {
                         case 1: // Random
-                            pk.Moves = Randomizer.getRandomMoves(
-                                Main.Config.Personal.getFormeEntry(pk.Species, pk.Form).Types,
-                                Main.Config.Moves,
-                                CHK_Damage.Checked, (int)NUD_Damage.Value,
-                                CHK_STAB.Checked, (int)NUD_STAB.Value);
+                            pk.Moves = move.GetRandomMoveset(pk.Species, 4);
                             break;
                         case 2: // Current LevelUp
-                            pk.Moves = getCurrentAttacks(pk);
+                            pk.Moves = learn.GetCurrentMoves(pk.Species, pk.Form, pk.Level, 4);
                             break;
                         case 3: // High Attacks
-                            pk.Moves = getHighAttacks(pk);
+                            pk.Moves = learn.GetHighPoweredMoves(pk.Species, pk.Form, 4);
                             break;
+                    }
+                    // sanitize moves
+                    if (CB_Moves.SelectedIndex > 1) // learn source
+                    {
+                        var moves = pk.Moves;
+                        if (move.SanitizeMovesetForBannedMoves(moves, pk.Species))
+                            pk.Moves = moves;
                     }
                 }
                 saveData(tr, i);
             }
-            Util.Alert("Randomized!");
+            WinFormsUtil.Alert("Randomized all Trainers according to specification!", "Press the Dump to .TXT button to view the new Trainer information!");
         }
         private void B_HighAttack_Click(object sender, EventArgs e)
         {
             pkm.Species = CB_Species.SelectedIndex;
             pkm.Level = (int)NUD_Level.Value;
             pkm.Form = CB_Forme.SelectedIndex;
-            var moves = getHighAttacks(pkm);
+            var moves = learn.GetHighPoweredMoves(pkm.Species, pkm.Form, 4);
             setMoves(moves);
         }
         private void B_CurrentAttack_Click(object sender, EventArgs e)
@@ -682,7 +698,7 @@ namespace pk3DS
             pkm.Species = CB_Species.SelectedIndex;
             pkm.Level = (int)NUD_Level.Value;
             pkm.Form = CB_Forme.SelectedIndex;
-            var moves = getCurrentAttacks(pkm);
+            var moves = learn.GetCurrentMoves(pkm.Species, pkm.Form, 4);
             setMoves(moves);
         }
         private void B_Clear_Click(object sender, EventArgs e)
@@ -722,7 +738,9 @@ namespace pk3DS
         }
         private void CHK_RandomClass_CheckedChanged(object sender, EventArgs e)
         {
-            CHK_IgnoreSpecialClass.Visible = CHK_RandomClass.Checked;
+            CHK_IgnoreSpecialClass.Enabled = CHK_RandomClass.Checked;
+            if (!CHK_RandomClass.Checked)
+                CHK_IgnoreSpecialClass.Checked = false;
         }
         private void CHK_RandomShiny_CheckedChanged(object sender, EventArgs e)
         {

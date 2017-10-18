@@ -2,6 +2,10 @@
 using System.Linq;
 using System.Windows.Forms;
 
+using pk3DS.Core;
+using pk3DS.Core.Randomizers;
+using pk3DS.Core.Structures;
+
 namespace pk3DS
 {
     public partial class StaticEncounterEditor7 : Form
@@ -10,11 +14,11 @@ namespace pk3DS
         private readonly EncounterGift7[] Gifts;
         private readonly EncounterStatic7[] Encounters;
         private readonly EncounterTrade7[] Trades;
-        private readonly string[] movelist = Main.getText(TextName.MoveNames);
-        private readonly string[] itemlist = Main.getText(TextName.ItemNames);
-        private readonly string[] specieslist = Main.getText(TextName.SpeciesNames);
-        private readonly string[] natures = Main.getText(TextName.Natures);
-        private readonly string[] types = Main.getText(TextName.Types);
+        private readonly string[] movelist = Main.Config.getText(TextName.MoveNames);
+        private readonly string[] itemlist = Main.Config.getText(TextName.ItemNames);
+        private readonly string[] specieslist = Main.Config.getText(TextName.SpeciesNames);
+        private readonly string[] natures = Main.Config.getText(TextName.Natures);
+        private readonly string[] types = Main.Config.getText(TextName.Types);
         private readonly int[] oldStarters;
 
         public StaticEncounterEditor7(byte[][] infiles)
@@ -131,7 +135,7 @@ namespace pk3DS
             if (Gifts.Take(3).Select(gift => gift.Species).SequenceEqual(oldStarters))
                 return;
 
-            var dr = Util.Prompt(MessageBoxButtons.YesNo, "Starters have been changed. Update text references?");
+            var dr = WinFormsUtil.Prompt(MessageBoxButtons.YesNo, "Starters have been changed. Update text references?", "Note that this only updates text references for the current language set in pk3DS.", "This can be changed from Options -> Language on the main window.");
             if (dr == DialogResult.Yes)
                 updateStarterText();
         }
@@ -206,6 +210,7 @@ namespace pk3DS
             CB_EMove1.SelectedIndex = moves[1];
             CB_EMove2.SelectedIndex = moves[2];
             CB_EMove3.SelectedIndex = moves[3];
+            CHK_ShinyLock.Checked = entry.ShinyLock;
 
             loading = false;
         }
@@ -227,6 +232,7 @@ namespace pk3DS
                 CB_EMove2.SelectedIndex,
                 CB_EMove3.SelectedIndex,
             };
+            entry.ShinyLock = CHK_ShinyLock.Checked;
         }
         private void getTrade()
         {
@@ -293,58 +299,90 @@ namespace pk3DS
         }
 
         // Randomization
-        private int[] getRandomSpeciesList()
+        private SpeciesRandomizer getRandomizer()
         {
-            return Randomizer.getSpeciesList(CHK_G1.Checked, CHK_G2.Checked, CHK_G3.Checked, CHK_G4.Checked, CHK_G5.Checked, CHK_G6.Checked, CHK_G7.Checked,
-                CHK_L.Checked, CHK_E.Checked);
+            var specrand = new SpeciesRandomizer(Main.Config)
+            {
+                G1 = CHK_G1.Checked,
+                G2 = CHK_G2.Checked,
+                G3 = CHK_G3.Checked,
+                G4 = CHK_G4.Checked,
+                G5 = CHK_G5.Checked,
+                G6 = CHK_G6.Checked,
+                G7 = false,
+
+                E = CHK_E.Checked,
+                L = CHK_L.Checked,
+
+                rBST = CHK_BST.Checked,
+            };
+            specrand.Initialize();
+            return specrand;
         }
         private void B_Starters_Click(object sender, EventArgs e)
         {
-            int[] sL = getRandomSpeciesList();
-            int ctr = 0;
+            if (WinFormsUtil.Prompt(MessageBoxButtons.YesNo, "Randomize Starters? Cannot undo.", "Double check Randomization settings before continuing.") != DialogResult.Yes)
+                return;
 
             setGift();
+
+            var specrand = getRandomizer();
+            var formrand = new FormRandomizer(Main.Config) { AllowMega = false, AllowAlolanForm = true };
 
             // Assign Species
             for (int i = 0; i < 3; i++)
             {
                 var t = Gifts[i];
-                t.Species = Randomizer.getRandomSpecies(ref sL, ref ctr, oldStarters[i], CHK_BST.Checked, Main.SpeciesStat);
-                t.Form = Randomizer.GetRandomForme(t.Species, false, true);
+                t.Species = specrand.GetRandomSpecies(oldStarters[i]);
+                t.Form = formrand.GetRandomForme(t.Species);
+
+                // no level boosting
             }
 
             getListBoxEntries();
             getGift();
 
-            System.Media.SystemSounds.Asterisk.Play();
+            WinFormsUtil.Alert("Randomized Starters according to specification!");
         }
         private void B_RandAll_Click(object sender, EventArgs e)
         {
-            int[] sL = getRandomSpeciesList();
-            int ctr = 0;
-
+            if (WinFormsUtil.Prompt(MessageBoxButtons.YesNo, "Randomize Static Encounters? Cannot undo.", "Double check Randomization Settings before continuing.") != DialogResult.Yes)
+                return;
+            
             setGift();
             setEncounter();
             setTrade();
 
+            var specrand = getRandomizer();
+            var formrand = new FormRandomizer(Main.Config) { AllowMega = false, AllowAlolanForm = true };
+            var move = new LearnsetRandomizer(Main.Config, Main.Config.Learnsets);
+
             for (int i = 3; i < Gifts.Length; i++) // Skip Starters
             {
                 var t = Gifts[i];
-                t.Species = Randomizer.getRandomSpecies(ref sL, ref ctr, t.Species, CHK_BST.Checked, Main.SpeciesStat);
-                t.Form = Randomizer.GetRandomForme(t.Species, false, true);
+                t.Species = specrand.GetRandomSpecies(t.Species);
+                t.Form = formrand.GetRandomForme(t.Species);
+
+                if (CHK_Level.Checked)
+                    t.Level = Randomizer.getModifiedLevel(t.Level, NUD_LevelBoost.Value);
             }
             foreach (EncounterStatic7 t in Encounters)
             {
-                t.Species = Randomizer.getRandomSpecies(ref sL, ref ctr, t.Species, CHK_BST.Checked, Main.SpeciesStat);
-                t.Form = Randomizer.GetRandomForme(t.Species, false, true);
-                int[] moves = Main.Config.Learnsets[t.Species].getCurrentMoves(t.Level); Array.Resize(ref moves, 4);
-                t.RelearnMoves = moves;
+                t.Species = specrand.GetRandomSpecies(t.Species);
+                t.Form = formrand.GetRandomForme(t.Species);
+                t.RelearnMoves = move.GetCurrentMoves(t.Species, t.Form, t.Level, 4);
+
+                if (CHK_Level.Checked)
+                    t.Level = Randomizer.getModifiedLevel(t.Level, NUD_LevelBoost.Value);
             }
             foreach (EncounterTrade7 t in Trades)
             {
-                t.Species = Randomizer.getRandomSpecies(ref sL, ref ctr, t.Species, CHK_BST.Checked, Main.SpeciesStat);
-                t.Form = Randomizer.GetRandomForme(t.Species, false, true);
-                t.TradeRequestSpecies = Randomizer.getRandomSpecies(ref sL, ref ctr, t.TradeRequestSpecies, CHK_BST.Checked, Main.SpeciesStat);
+                t.Species = specrand.GetRandomSpecies(t.Species);
+                t.Form = formrand.GetRandomForme(t.Species);
+                t.TradeRequestSpecies = specrand.GetRandomSpecies(t.TradeRequestSpecies);
+
+                if (CHK_Level.Checked)
+                    t.Level = Randomizer.getModifiedLevel(t.Level, NUD_LevelBoost.Value);
             }
 
             getListBoxEntries();
@@ -352,7 +390,7 @@ namespace pk3DS
             getEncounter();
             getTrade();
 
-            System.Media.SystemSounds.Asterisk.Play();
+            WinFormsUtil.Alert("Randomized Static Encounters according to specification!");
         }
 
         // Mirror Changes
@@ -366,7 +404,7 @@ namespace pk3DS
                 var s = Main.Config.getGARCByReference(sr);
                 byte[][] storytextdata = s.Files;
 
-                string[] storyText = TextFile.getStrings(storytextdata[41]);
+                string[] storyText = TextFile.getStrings(Main.Config, storytextdata[41]);
 
                 for (int j = 0; j < 3; j++)
                 {
@@ -386,7 +424,7 @@ namespace pk3DS
 
                     storyText[1 + j] = line;
                 }
-                storytextdata[41] = TextFile.getBytes(storyText);
+                storytextdata[41] = TextFile.getBytes(Main.Config, storyText);
                 s.Files = storytextdata;
                 s.Save();
             }
